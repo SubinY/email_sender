@@ -1,64 +1,88 @@
-<div align="center"><strong>Next.js 15 Admin Dashboard Template</strong></div>
-<div align="center">Built with the Next.js App Router</div>
-<br />
-<div align="center">
-<a href="https://next-admin-dash.vercel.app/">Demo</a>
-<span> · </span>
-<a href="https://vercel.com/templates/next.js/admin-dashboard-tailwind-postgres-react-nextjs">Clone & Deploy</a>
-<span>
-</div>
+# 批量发送邮件管理系统
 
-## Overview
+基于 Next.js 15 + TypeScript + Tailwind CSS 构建的批量发送邮件管理系统，包含三个核心管理模块。
 
-This is a starter template using the following stack:
+## 功能特性
 
-- Framework - [Next.js (App Router)](https://nextjs.org)
-- Language - [TypeScript](https://www.typescriptlang.org)
-- Auth - [Auth.js](https://authjs.dev)
-- Database - [Postgres](https://vercel.com/postgres)
-- Deployment - [Vercel](https://vercel.com/docs/concepts/next.js/overview)
-- Styling - [Tailwind CSS](https://tailwindcss.com)
-- Components - [Shadcn UI](https://ui.shadcn.com/)
-- Analytics - [Vercel Analytics](https://vercel.com/analytics)
-- Formatting - [Prettier](https://prettier.io)
+### 1. 接收邮箱管理
+- **表格展示**：高校名称、学院名称、联系人、所属省份、邮箱、联系电话、主要职责、黑名单状态
+- **搜索功能**：支持高校名称模糊搜索
+- **黑名单管理**：使用Switch组件快速切换黑名单状态
+- **批量导入**：支持批量导入接收邮箱数据（占位功能）
 
-This template uses the new Next.js App Router. This includes support for enhanced layouts, colocation of components, tests, and styles, component-level data fetching, and more.
+### 2. 发送邮箱管理
+- **表格展示**：企业名称、内推码、内推连接、发送邮箱账号、SMTP服务器、端口、SSL/TLS、启用状态
+- **搜索功能**：支持邮箱账号模糊搜索
+- **完整的CRUD操作**：新增、编辑、删除发送邮箱配置
+- **表单验证**：包含所有必填字段验证和格式验证
+- **SMTP配置**：支持465/587/25端口，SSL/TLS选择
 
-## Getting Started
+### 3. 发送任务管理
+- **任务展示**：任务名称、发送邮箱、时间周期、状态管理
+- **任务控制**：支持任务启动、暂停、详情查看
+- **多选配置**：支持多个发送邮箱选择
+- **发送规则**：配置每小时发送量、每日限制等规则
 
-During the deployment, Vercel will prompt you to create a new Postgres database. This will add the necessary environment variables to your project.
+## 技术栈
 
-Inside the Vercel Postgres dashboard, create a table based on the schema defined in this repository.
+- **框架**: Next.js 15 (App Router)
+- **语言**: TypeScript
+- **样式**: Tailwind CSS
+- **UI组件**: Radix UI primitives
+- **状态管理**: React Hooks
+- **图标**: Lucide React
 
-```
-CREATE TYPE status AS ENUM ('active', 'inactive', 'archived');
-
-CREATE TABLE products (
-  id SERIAL PRIMARY KEY,
-  image_url TEXT NOT NULL,
-  name TEXT NOT NULL,
-  status status NOT NULL,
-  price NUMERIC(10, 2) NOT NULL,
-  stock INTEGER NOT NULL,
-  available_at TIMESTAMP NOT NULL
-);
-```
-
-Then, uncomment `app/api/seed.ts` and hit `http://localhost:3000/api/seed` to seed the database with products.
-
-Next, copy the `.env.example` file to `.env` and update the values. Follow the instructions in the `.env.example` file to set up your GitHub OAuth application.
-
-```bash
-npm i -g vercel
-vercel link
-vercel env pull
-```
-
-Finally, run the following commands to start the development server:
+## 项目结构
 
 ```
-pnpm install
-pnpm dev
+app/
+├── layout.tsx           # 根布局
+├── page.tsx            # 主页面路由和导航
+└── globals.css         # 全局样式
+
+components/
+├── email/              # 邮件管理相关组件
+│   ├── receive-email-management.tsx
+│   ├── send-email-management.tsx
+│   └── send-task-management.tsx
+└── ui/                 # 通用UI组件
+    ├── button.tsx
+    ├── input.tsx
+    ├── table.tsx
+    ├── switch.tsx
+    ├── dialog.tsx
+    ├── select.tsx
+    ├── multi-select.tsx
+    └── ...
 ```
 
-You should now be able to access the application at http://localhost:3000.
+## 开发说明
+
+1. **启动开发服务器**：
+   ```bash
+   pnpm dev
+   ```
+
+2. **组件设计原则**：
+   - 所有公共组件采用UI组件复用形式
+   - 表格、表单、弹窗等都是独立的可复用组件
+   - 采用现代React Hooks进行状态管理
+
+3. **数据管理**：
+   - 目前使用模拟数据进行演示
+   - 所有CRUD操作都在客户端内存中进行
+   - 后续可轻松接入真实的API服务
+
+## 已完成功能
+
+✅ 三个管理页面的完整UI实现  
+✅ 搜索和筛选功能  
+✅ 表格数据展示和操作  
+✅ 表单验证和数据提交  
+✅ 状态管理和切换  
+✅ 响应式设计  
+✅ 现代化UI组件库
+
+## 运行项目
+
+访问 http://localhost:3000 查看应用，使用左侧导航在三个管理模块之间切换。 
