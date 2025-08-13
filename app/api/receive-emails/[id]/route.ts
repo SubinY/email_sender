@@ -10,52 +10,9 @@ import {
   notFoundResponse
 } from '@/lib/utils/api-response';
 import { logger } from '@/lib/utils/logger';
-
-// 使用与父路由相同的模拟数据
-const MOCK_RECEIVE_EMAILS = [
-  {
-    id: '1',
-    universityName: '北京大学',
-    collegeName: '计算机学院',
-    contactPerson: '张教授',
-    province: '北京',
-    email: 'zhang@pku.edu.cn',
-    phone: '010-12345678',
-    responsibility: '学术合作',
-    isBlacklisted: false,
-    createdBy: '1',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '2',
-    universityName: '清华大学',
-    collegeName: '软件学院',
-    contactPerson: '李教授',
-    province: '北京',
-    email: 'li@tsinghua.edu.cn',
-    phone: '010-87654321',
-    responsibility: '人才培养',
-    isBlacklisted: true,
-    createdBy: '1',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '3',
-    universityName: '复旦大学',
-    collegeName: '信息学院',
-    contactPerson: '王教授',
-    province: '上海',
-    email: 'wang@fudan.edu.cn',
-    phone: '021-12345678',
-    responsibility: '技术交流',
-    isBlacklisted: false,
-    createdBy: '1',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
+import db from '@/lib/db';
+import { receiveEmails } from '@/lib/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 
 interface RouteContext {
   params: {
@@ -76,17 +33,23 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     if (!checkPermission(user.role, 'receive-emails:read')) {
       return forbiddenResponse();
     }
-    console.log(params, 'paramsparams')
-    const { id } = params;
-    const receiveEmail = MOCK_RECEIVE_EMAILS.find(item => item.id === id);
 
-    if (!receiveEmail) {
+    const { id } = params;
+    
+    // 从数据库查询
+    const receiveEmail = await db
+      .select()
+      .from(receiveEmails)
+      .where(eq(receiveEmails.id, id))
+      .limit(1);
+
+    if (receiveEmail.length === 0) {
       return notFoundResponse('接收邮箱');
     }
 
     logger.debug('Receive email fetched', { userId: user.userId, emailId: id });
 
-    return successResponse(receiveEmail);
+    return successResponse(receiveEmail[0]);
 
   } catch (error) {
     logger.error('Get receive email error', error);
@@ -104,7 +67,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
     }
 
     // 权限检查
-    if (!checkPermission(user.role, 'receive-emails:write')) {
+    if (!checkPermission(user.role, 'receive-emails:update')) {
       return forbiddenResponse();
     }
 
@@ -125,30 +88,40 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
     }
 
     const updateData = validation.data;
-    const receiveEmailIndex = MOCK_RECEIVE_EMAILS.findIndex(item => item.id === id);
 
-    if (receiveEmailIndex === -1) {
+    // 检查记录是否存在
+    const existingRecord = await db
+      .select()
+      .from(receiveEmails)
+      .where(eq(receiveEmails.id, id))
+      .limit(1);
+
+    if (existingRecord.length === 0) {
       return notFoundResponse('接收邮箱');
     }
 
     // 如果更新邮箱地址，检查是否与其他记录冲突
     if (updateData.email) {
-      const existingEmail = MOCK_RECEIVE_EMAILS.find(
-        item => item.email === updateData.email && item.id !== id
-      );
-      if (existingEmail) {
+      const existingEmail = await db
+        .select()
+        .from(receiveEmails)
+        .where(eq(receiveEmails.email, updateData.email))
+        .limit(1);
+
+      if (existingEmail.length > 0 && existingEmail[0].id !== id) {
         return errorResponse('EMAIL_EXISTS', '该邮箱已存在', null, 409);
       }
     }
 
     // 更新记录
-    const updatedReceiveEmail = {
-      ...MOCK_RECEIVE_EMAILS[receiveEmailIndex],
-      ...updateData,
-      updatedAt: new Date().toISOString()
-    };
-
-    MOCK_RECEIVE_EMAILS[receiveEmailIndex] = updatedReceiveEmail;
+    const updatedReceiveEmail = await db
+      .update(receiveEmails)
+      .set({
+        ...updateData,
+        updatedAt: new Date()
+      })
+      .where(eq(receiveEmails.id, id))
+      .returning();
 
     logger.info('Receive email updated', { 
       userId: user.userId,
@@ -156,7 +129,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
       updatedFields: Object.keys(updateData)
     });
 
-    return successResponse(updatedReceiveEmail);
+    return successResponse(updatedReceiveEmail[0]);
 
   } catch (error) {
     logger.error('Update receive email error', error);
@@ -174,25 +147,32 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     }
 
     // 权限检查
-    if (!checkPermission(user.role, 'receive-emails:write')) {
+    if (!checkPermission(user.role, 'receive-emails:delete')) {
       return forbiddenResponse();
     }
 
     const { id } = params;
-    const receiveEmailIndex = MOCK_RECEIVE_EMAILS.findIndex(item => item.id === id);
 
-    if (receiveEmailIndex === -1) {
+    // 检查记录是否存在
+    const existingRecord = await db
+      .select()
+      .from(receiveEmails)
+      .where(eq(receiveEmails.id, id))
+      .limit(1);
+
+    if (existingRecord.length === 0) {
       return notFoundResponse('接收邮箱');
     }
 
-    // 删除记录（在实际应用中可能是软删除）
-    const deletedReceiveEmail = MOCK_RECEIVE_EMAILS[receiveEmailIndex];
-    MOCK_RECEIVE_EMAILS.splice(receiveEmailIndex, 1);
+    // 硬删除记录
+    await db
+      .delete(receiveEmails)
+      .where(eq(receiveEmails.id, id));
 
     logger.info('Receive email deleted', { 
       userId: user.userId,
       emailId: id,
-      email: deletedReceiveEmail.email
+      email: existingRecord[0].email
     });
 
     return successResponse({ 

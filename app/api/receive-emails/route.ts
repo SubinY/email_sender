@@ -54,9 +54,6 @@ export async function GET(request: NextRequest) {
 
     // 构建查询条件
     const conditions = [];
-    
-    // 软删除过滤
-    conditions.push(isNull(receiveEmails.deletedAt));
 
     if (search) {
       conditions.push(
@@ -144,10 +141,7 @@ export async function POST(request: NextRequest) {
     const existingEmail = await db
       .select()
       .from(receiveEmails)
-      .where(and(
-        eq(receiveEmails.email, data.email),
-        isNull(receiveEmails.deletedAt)
-      ))
+      .where(eq(receiveEmails.email, data.email))
       .limit(1);
 
     if (existingEmail.length > 0) {

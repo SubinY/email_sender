@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 export const createReceiveEmailSchema = z.object({
   universityName: z.string()
-    .min(1, '高校名称不能为空')
-    .max(200, '高校名称不能超过200个字符'),
+    .min(1, '学校名称不能为空')
+    .max(200, '学校名称不能超过200个字符'),
   collegeName: z.string()
     .max(200, '学院名称不能超过200个字符')
     .optional(),

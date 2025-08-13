@@ -19,6 +19,7 @@ interface SidebarProps<T extends string> {
   className?: string;
   brand?: React.ReactNode;
   footer?: React.ReactNode;
+  onLogout?: () => void;
 }
 
 export function Sidebar<T extends string>({
@@ -27,7 +28,8 @@ export function Sidebar<T extends string>({
   onChange,
   className,
   brand,
-  footer
+  footer,
+  onLogout
 }: SidebarProps<T>) {
   const navRef = React.useRef<HTMLDivElement>(null);
   const itemRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
@@ -72,7 +74,7 @@ export function Sidebar<T extends string>({
       <div className="mb-6 px-2">
         {brand ?? (
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-white text-sky-900 font-bold">Q</div>
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-white text-sky-900 font-bold">Em</div>
             <div className="text-lg font-semibold tracking-wide">管理后台</div>
           </div>
         )}
@@ -124,7 +126,7 @@ export function Sidebar<T extends string>({
             <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/30 bg-white/10">
               <LogOut className="h-4 w-4" />
             </span>
-            <span className="text-[15px]">退出登录</span>
+            <span className="text-[15px]" onClick={onLogout}>退出登录</span>
           </button>
         )}
       </div>

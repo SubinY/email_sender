@@ -30,14 +30,18 @@ export function useApi(options: UseApiOptions = {}) {
   const request = async <T = any>(
     url: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-    data?: any
+    data?: any,
+    options?: { isFormData?: boolean }
   ): Promise<ApiResponse<T>> => {
     setLoading(true);
 
     try {
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json'
-      };
+      const headers: HeadersInit = {};
+
+      // 如果不是FormData，设置JSON Content-Type
+      if (!options?.isFormData) {
+        headers['Content-Type'] = 'application/json';
+      }
 
       if (tokens?.accessToken) {
         headers.Authorization = `Bearer ${tokens.accessToken}`;
@@ -49,7 +53,11 @@ export function useApi(options: UseApiOptions = {}) {
       };
 
       if (data && method !== 'GET') {
-        config.body = JSON.stringify(data);
+        if (options?.isFormData) {
+          config.body = data; // FormData直接使用
+        } else {
+          config.body = JSON.stringify(data); // 其他数据JSON序列化
+        }
       }
 
       const response = await fetch(url, config);
@@ -84,7 +92,7 @@ export function useApi(options: UseApiOptions = {}) {
   };
 
   const get = <T = any>(url: string) => request<T>(url, 'GET');
-  const post = <T = any>(url: string, data: any) => request<T>(url, 'POST', data);
+  const post = <T = any>(url: string, data: any, options?: { isFormData?: boolean }) => request<T>(url, 'POST', data, options);
   const put = <T = any>(url: string, data: any) => request<T>(url, 'PUT', data);
   const del = <T = any>(url: string) => request<T>(url, 'DELETE');
 

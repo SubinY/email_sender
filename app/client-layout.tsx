@@ -2,6 +2,7 @@
 
 import { AuthProvider } from '@/hooks/use-auth';
 import { ProtectedRoute } from '@/components/auth/protected-route';
+import { Toaster } from '@/components/ui/toaster';
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -9,6 +10,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
       <ProtectedRoute>
         {children}
       </ProtectedRoute>
+      <Toaster />
     </AuthProvider>
   );
 } 
