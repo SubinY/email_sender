@@ -64,7 +64,7 @@ export function Sidebar<T extends string>({
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-30 flex h-screen w-60 flex-col bg-sky-900 p-4 text-white',
+        'fixed left-0 z-30 flex h-full w-60 flex-col bg-sky-900 p-4 text-white',
         'rounded-r-3xl shadow-lg relative',
         className
       )}

@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Mail, MailOpen, Send } from 'lucide-react';
 import { Sidebar } from '@/components/ui/sidebar';
-import { ReceiveEmailManagement } from '@/components/email/receive-email-management';
+import { Header } from '@/components/ui/header';
+import { ReceiveEmailManagementApi } from '@/components/email/receive-email-management';
 import { SendEmailManagement } from '@/components/email/send-email-management';
 import { SendTaskManagement } from '@/components/email/send-task-management';
 
@@ -37,6 +38,7 @@ export default function Page() {
 
   return (
     <div className="min-h-screen w-full">
+      
       {/* 左侧固定导航栏 */}
       <Sidebar
         className="fixed"
@@ -47,7 +49,7 @@ export default function Page() {
 
       {/* 右侧内容区 */}
       <main className="ml-60 p-4 md:p-6">
-        {active === 'receive' && <ReceiveEmailManagement />}
+        {active === 'receive' && <ReceiveEmailManagementApi />}
         {active === 'send' && <SendEmailManagement />}
         {active === 'task' && <SendTaskManagement />}
       </main>

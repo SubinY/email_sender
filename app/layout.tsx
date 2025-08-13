@@ -1,4 +1,5 @@
 import './globals.css';
+import { ClientLayout } from './client-layout';
 
 export const metadata = {
   title: '批量发送邮件管理系统',
@@ -13,7 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN">
-      <body className="flex min-h-screen w-full flex-col">{children}</body>
+      <body className="flex min-h-screen w-full flex-col">
+        <ClientLayout>{children}</ClientLayout>
+      </body>
     </html>
   );
 }
