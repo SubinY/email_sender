@@ -74,11 +74,8 @@ export class TaskCalculator {
       effectiveDailyRate
     );
     
-    // 5. 初始化状态矩阵
-    const statusMatrix = this.initializeStatusMatrix(
-      sendEmailIds,
-      receiveEmailCount
-    );
+    // 5. 初始化状态矩阵 - 只为实际发送的邮件创建状态
+    const statusMatrix = this.initializeStatusMatrix(sendingSchedule);
 
     return {
       totalEmails,
@@ -92,7 +89,7 @@ export class TaskCalculator {
   }
 
   /**
-   * 生成每天的发送计划
+   * 生成每天的发送计划 - 重写以正确实现接收方限制约束
    */
   private static generateSchedule(
     params: TaskParams,
@@ -100,40 +97,97 @@ export class TaskCalculator {
     effectiveDailyRate: number
   ): DaySchedule[] {
     const schedule: DaySchedule[] = [];
-    const { sendEmailIds, receiveEmailCount, emailsPerHour, workingHours = 24 } = params;
+    const { 
+      sendEmailIds, 
+      receiveEmailCount, 
+      emailsPerHour, 
+      emailsPerTeacherPerDay,
+      workingHours = 24 
+    } = params;
     
-    const emailsPerSenderPerHour = emailsPerHour;
-    const emailsPerSenderPerDay = emailsPerSenderPerHour * workingHours;
-    
-    // 生成接收方ID数组（模拟）
+    // 生成接收方ID数组
     const receiveEmailIds = Array.from({ length: receiveEmailCount }, (_, i) => `receive-${i + 1}`);
     
-    let remainingEmails = receiveEmailCount;
-    let receiveEmailIndex = 0;
+    // 关键修复：正确的邮件分配逻辑
+    const totalEmails = sendEmailIds.length * receiveEmailCount;
+    let processedEmails = 0;
     
-    for (let day = 1; day <= calculatedDays; day++) {
+    // 按天分组发送方，确保每个接收方每天最多收到指定数量不同企业邮件
+    const sendersPerDay = Math.min(emailsPerTeacherPerDay, sendEmailIds.length);
+    const senderGroups = this.createSenderGroups(sendEmailIds, sendersPerDay);
+    
+    for (let day = 1; day <= calculatedDays && processedEmails < totalEmails; day++) {
       const daySchedule: DaySchedule = {
         day,
         sendEmails: [],
         totalEmailsForDay: 0
       };
       
-      // 为每个发送方安排今天的发送计划
-      for (const sendEmailId of sendEmailIds) {
-        if (remainingEmails <= 0) break;
+      // 获取当天的发送方组
+      const todaySenders = senderGroups[(day - 1) % senderGroups.length];
+      
+      // 计算当天每个发送方最多可以发送多少邮件
+      const maxEmailsPerSenderToday = Math.floor(effectiveDailyRate / todaySenders.length);
+      const remainingDailyEmails = effectiveDailyRate - (maxEmailsPerSenderToday * todaySenders.length);
+      
+      let receiverIndex = 0;
+      
+      for (let senderIdx = 0; senderIdx < todaySenders.length; senderIdx++) {
+        const sendEmailId = todaySenders[senderIdx];
         
-        const emailsToSendToday = Math.min(emailsPerSenderPerDay, remainingEmails);
-        const receiveEmailsForThisSender = receiveEmailIds.slice(
-          receiveEmailIndex,
-          receiveEmailIndex + emailsToSendToday
-        );
+        // 为这个发送方分配接收方
+        let emailsForThisSender = maxEmailsPerSenderToday;
         
-        // 生成每小时发送时间
+        // 分配剩余的邮件（如果有的话）
+        if (senderIdx < remainingDailyEmails) {
+          emailsForThisSender += 1;
+        }
+        
+        // 确保不超过剩余邮件数
+        const remainingEmails = totalEmails - processedEmails;
+        emailsForThisSender = Math.min(emailsForThisSender, remainingEmails);
+        
+        if (emailsForThisSender <= 0) break;
+        
+        // 分配接收方ID（循环使用）
+        const receiveEmailsForThisSender: string[] = [];
+        for (let i = 0; i < emailsForThisSender; i++) {
+          const receiveIdx = (receiverIndex + i) % receiveEmailIds.length;
+          receiveEmailsForThisSender.push(receiveEmailIds[receiveIdx]);
+        }
+        receiverIndex = (receiverIndex + emailsForThisSender) % receiveEmailIds.length;
+        
+        // 生成每小时发送时间 - 确保数量与接收方ID匹配
         const plannedSendTime = this.generateHourlySendTimes(
-          emailsToSendToday,
-          emailsPerSenderPerHour,
+          emailsForThisSender,
+          emailsPerHour,
           workingHours
         );
+        
+        // 安全检查：确保两个数组长度相同
+        if (plannedSendTime.length !== receiveEmailsForThisSender.length) {
+          console.error(`Array length mismatch in generateSchedule`, {
+            day,
+            sendEmailId,
+            plannedSendTimeLength: plannedSendTime.length,
+            receiveEmailsLength: receiveEmailsForThisSender.length,
+            emailsForThisSender,
+            emailsPerHour,
+            workingHours
+          });
+          
+          // 补齐或截断plannedSendTime数组
+          while (plannedSendTime.length < receiveEmailsForThisSender.length) {
+            // 如果时间不够，复制最后一个时间
+            const lastTime = plannedSendTime[plannedSendTime.length - 1] || '00:00';
+            plannedSendTime.push(lastTime);
+          }
+          
+          // 如果时间太多，截断
+          if (plannedSendTime.length > receiveEmailsForThisSender.length) {
+            plannedSendTime.splice(receiveEmailsForThisSender.length);
+          }
+        }
         
         daySchedule.sendEmails.push({
           sendEmailId,
@@ -141,15 +195,43 @@ export class TaskCalculator {
           plannedSendTime
         });
         
-        daySchedule.totalEmailsForDay += emailsToSendToday;
-        receiveEmailIndex += emailsToSendToday;
-        remainingEmails -= emailsToSendToday;
+        daySchedule.totalEmailsForDay += emailsForThisSender;
+        processedEmails += emailsForThisSender;
       }
       
       schedule.push(daySchedule);
     }
     
     return schedule;
+  }
+
+  /**
+   * 创建发送方分组，确保每天的发送方组合不同
+   */
+  private static createSenderGroups(sendEmailIds: string[], sendersPerDay: number): string[][] {
+    const groups: string[][] = [];
+    const totalSenders = sendEmailIds.length;
+    
+    if (sendersPerDay >= totalSenders) {
+      // 如果每天可以用所有发送方，就直接返回一个包含所有发送方的组
+      return [sendEmailIds];
+    }
+    
+    // 创建轮换组合
+    const totalGroups = Math.ceil(totalSenders / sendersPerDay);
+    
+    for (let groupIndex = 0; groupIndex < totalGroups; groupIndex++) {
+      const group: string[] = [];
+      
+      for (let i = 0; i < sendersPerDay; i++) {
+        const senderIndex = (groupIndex * sendersPerDay + i) % totalSenders;
+        group.push(sendEmailIds[senderIndex]);
+      }
+      
+      groups.push(group);
+    }
+    
+    return groups;
   }
 
   /**
@@ -178,22 +260,21 @@ export class TaskCalculator {
   }
 
   /**
-   * 初始化邮件状态矩阵
+   * 根据实际发送计划初始化邮件状态矩阵
    */
-  private static initializeStatusMatrix(
-    sendEmailIds: string[],
-    receiveEmailCount: number
-  ): EmailStatusMatrix {
+  private static initializeStatusMatrix(sendingSchedule: DaySchedule[]): EmailStatusMatrix {
     const matrix: EmailStatusMatrix = {};
     
-    for (let i = 0; i < receiveEmailCount; i++) {
-      const receiveEmailId = `receive-${i + 1}`;
-      matrix[receiveEmailId] = {};
-      
-      for (const sendEmailId of sendEmailIds) {
-        matrix[receiveEmailId][sendEmailId] = 'pending';
-      }
-    }
+    sendingSchedule.forEach(daySchedule => {
+      daySchedule.sendEmails.forEach(senderSchedule => {
+        senderSchedule.receiveEmailIds.forEach(receiveEmailId => {
+          if (!matrix[receiveEmailId]) {
+            matrix[receiveEmailId] = {};
+          }
+          matrix[receiveEmailId][senderSchedule.sendEmailId] = 'pending';
+        });
+      });
+    });
     
     return matrix;
   }

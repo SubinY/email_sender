@@ -23,7 +23,7 @@ interface RouteContext {
 
 // 请求数据验证schema
 const controlTaskSchema = z.object({
-  action: z.enum(['start', 'pause', 'resume'], {
+  action: z.enum(['start', 'pause', 'resume', 'stop'], {
     required_error: '请指定操作类型'
   }),
   calculationResult: z.object({
@@ -99,20 +99,44 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
           return errorResponse('MISSING_STATUS_MATRIX', '缺少状态矩阵数据');
         }
         
-        // 更新任务状态为运行中
-        await db
-          .update(sendTasks)
-          .set({ 
-            status: 'running',
-            startTime: new Date(),
-            durationDays: calculationResult.calculatedDays
-          })
-          .where(eq(sendTasks.id, id));
+        try {
+          // 更新任务状态为运行中
+          await db
+            .update(sendTasks)
+            .set({ 
+              status: 'running',
+              startTime: new Date(),
+              durationDays: calculationResult.calculatedDays
+            })
+            .where(eq(sendTasks.id, id));
 
-        // 启动邮件调度器
-        await emailScheduler.startTask(id, calculationResult);
+          // 启动邮件调度器
+          await emailScheduler.startTask(id, calculationResult);
+          
+          logger.info(`Task started successfully: ${id}`);
+        } catch (schedulerError) {
+          // 如果调度器启动失败，回滚数据库状态
+          logger.error(`Scheduler start failed for task ${id}, rolling back`, schedulerError);
+          
+          try {
+            await db
+              .update(sendTasks)
+              .set({ 
+                status: 'failed',
+                startTime: null
+              })
+              .where(eq(sendTasks.id, id));
+          } catch (rollbackError) {
+            logger.error(`Failed to rollback task status for ${id}`, rollbackError);
+          }
+          
+          return errorResponse(
+            'SCHEDULER_START_FAILED',
+            '启动调度器失败',
+            schedulerError instanceof Error ? schedulerError.message : 'Unknown scheduler error'
+          );
+        }
         
-        logger.info(`Task started: ${id}`);
         break;
 
       case 'pause':
@@ -141,6 +165,23 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         logger.info(`Task resumed: ${id}`);
         break;
 
+      case 'stop':
+        // 更新任务状态为初始化（可以重新开始）
+        await db
+          .update(sendTasks)
+          .set({ 
+            status: 'initialized',
+            startTime: null,
+            endTime: null
+          })
+          .where(eq(sendTasks.id, id));
+
+        // 停止并清理邮件调度器
+        emailScheduler.stopTask(id);
+        
+        logger.info(`Task stopped: ${id}`);
+        break;
+
       default:
         return errorResponse('INVALID_ACTION', '无效的操作类型');
     }
@@ -157,6 +198,13 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     // 获取调度器状态
     const schedulerStatus = emailScheduler.getTaskStatus(id);
 
+    const actionMessages = {
+      start: '启动',
+      pause: '暂停', 
+      resume: '恢复',
+      stop: '停止'
+    };
+
     return successResponse({
       task: {
         id: updatedTask.id,
@@ -170,11 +218,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         currentDay: schedulerStatus.currentDay,
         statistics: schedulerStatus.statistics
       } : null,
-      message: `任务${action === 'start' ? '启动' : action === 'pause' ? '暂停' : '恢复'}成功`
+      message: `任务${actionMessages[action]}成功`
     });
 
   } catch (error) {
-    logger.error(`Task control failed for ${id}`, error);
+    logger.error(`Task control failed for ${params.id}`, error);
     return errorResponse(
       'CONTROL_ERROR', 
       '任务控制失败',

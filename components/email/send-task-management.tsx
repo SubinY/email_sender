@@ -267,10 +267,10 @@ export function SendTaskManagement() {
     }
   };
 
-  // 任务控制（启动/暂停/恢复）
+  // 任务控制（启动/暂停/恢复/停止）
   const controlTask = async (
     taskId: string,
-    action: 'start' | 'pause' | 'resume',
+    action: 'start' | 'pause' | 'resume' | 'stop',
     calculation?: TaskCalculationResult
   ) => {
     try {
@@ -300,6 +300,54 @@ export function SendTaskManagement() {
         description: '网络错误，请重试'
       });
     }
+  };
+
+  // 重置调度器状态
+  const resetScheduler = async () => {
+    try {
+      const response = await del('/api/send-tasks');
+
+      if (response.success) {
+        toast({
+          title: '重置成功',
+          description: '调度器状态已重置，内存中的所有任务和定时器已清理'
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: '重置失败',
+          description: response.error?.message || '请重试'
+        });
+      }
+    } catch (error) {
+      console.error('Failed to reset scheduler:', error);
+      toast({
+        variant: 'destructive',
+        title: '重置失败',
+        description: '网络错误，请重试'
+      });
+    }
+  };
+
+  // 检查调度器状态 - 用于诊断
+  const checkSchedulerStatus = () => {
+    const runningTasks = data.filter(task => task.status === 'running');
+    const pausedTasks = data.filter(task => task.status === 'paused');
+    
+    let statusMessage = `数据库中的任务状态:\n`;
+    statusMessage += `• 运行中任务: ${runningTasks.length} 个\n`;
+    statusMessage += `• 暂停任务: ${pausedTasks.length} 个\n`;
+    statusMessage += `• 总任务数: ${data.length} 个\n\n`;
+    statusMessage += `如果遇到"调度器启动失败"错误，建议:\n`;
+    statusMessage += `1. 点击"重置调度器"清理内存状态\n`;
+    statusMessage += `2. 刷新页面重新加载\n`;
+    statusMessage += `3. 重新启动任务`;
+
+    toast({
+      title: '调度器状态检查',
+      description: statusMessage,
+      duration: 10000,
+    });
   };
 
   // 获取任务状态
@@ -348,7 +396,28 @@ export function SendTaskManagement() {
       });
       return;
     }
-    await controlTask(task.id, 'start', calculationResult);
+    
+    try {
+      await controlTask(task.id, 'start', calculationResult);
+    } catch (error) {
+      // 特殊处理调度器启动失败的情况
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      
+      if (errorMessage.includes('调度器') || errorMessage.includes('scheduler')) {
+        toast({
+          variant: 'destructive',
+          title: '调度器启动失败',
+          description: '可能存在内存状态冲突，请尝试点击"重置调度器"按钮后重试',
+          duration: 8000
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: '启动失败',
+          description: errorMessage
+        });
+      }
+    }
   };
 
   // 暂停任务
@@ -359,6 +428,11 @@ export function SendTaskManagement() {
   // 恢复任务
   const handleResume = async (task: SendTask) => {
     await controlTask(task.id, 'resume');
+  };
+
+  // 停止任务
+  const handleStop = async (task: SendTask) => {
+    await controlTask(task.id, 'stop');
   };
 
   // 查看状态矩阵
@@ -480,6 +554,12 @@ export function SendTaskManagement() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">发送任务管理</h1>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={checkSchedulerStatus}>
+            状态检查
+          </Button>
+          <Button variant="outline" size="sm" onClick={resetScheduler}>
+            重置调度器
+          </Button>
           <Button onClick={handleAdd}>
             <Plus className="mr-2 h-4 w-4" />
             新增任务
@@ -539,22 +619,42 @@ export function SendTaskManagement() {
                         </Button>
                       )}
                       {item.status === 'running' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePause(item)}
-                        >
-                          <Pause className="h-4 w-4" />
-                        </Button>
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePause(item)}
+                          >
+                            <Pause className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleStop(item)}
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                          >
+                            <AlertCircle className="h-4 w-4" />
+                          </Button>
+                        </>
                       )}
                       {item.status === 'paused' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleResume(item)}
-                        >
-                          <Play className="h-4 w-4" />
-                        </Button>
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleResume(item)}
+                          >
+                            <Play className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleStop(item)}
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                          >
+                            <AlertCircle className="h-4 w-4" />
+                          </Button>
+                        </>
                       )}
                       <Button
                         variant="outline"

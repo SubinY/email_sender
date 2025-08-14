@@ -218,3 +218,42 @@ export async function POST(request: NextRequest) {
     );
   }
 } 
+
+/**
+ * DELETE - 重置调度器状态（清理内存中的所有任务和定时器）
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    logger.info('Reset scheduler request started');
+    
+    // 认证检查
+    const user = await authenticateUser(request);
+    if (!user) {
+      return unauthorizedResponse();
+    }
+
+    // 权限检查 - 只有管理员可以重置
+    // if (!checkPermission(user.role, 'send-emails:admin')) {
+    //   return forbiddenResponse();
+    // }
+
+    // 导入emailScheduler并重置
+    const { emailScheduler } = await import('@/lib/email/email-scheduler');
+    emailScheduler.reset();
+
+    logger.info('Scheduler reset completed successfully');
+
+    return successResponse({
+      message: '调度器状态已重置',
+      resetAt: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error('Reset scheduler failed', error);
+    return errorResponse(
+      'RESET_ERROR', 
+      '重置调度器失败',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  }
+} 
