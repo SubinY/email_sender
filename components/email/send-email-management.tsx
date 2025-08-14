@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableHead, TableHeader, TableRow, TableCell } from '@/components/ui/table';
@@ -8,11 +8,13 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Search, Plus, Edit, Trash2 } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Loader2 } from 'lucide-react';
+import { useApi, ApiResponse } from '@/hooks/use-api';
+import { useToast } from '@/hooks/use-toast';
 
 // 发送邮箱数据类型
 interface SendEmail {
-  id: number;
+  id: string;
   companyName: string;
   referralCode: string;
   referralLink: string;
@@ -22,47 +24,48 @@ interface SendEmail {
   sslTls: boolean;
   isEnabled: boolean;
   senderName: string;
-  description: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-// 模拟数据
-const mockData: SendEmail[] = [
-  {
-    id: 1,
-    companyName: '腾讯科技',
-    referralCode: 'TX2024',
-    referralLink: 'https://tencent.com/jobs',
-    emailAccount: 'hr@tencent.com',
-    smtpServer: 'smtp.tencent.com',
-    port: 465,
-    sslTls: true,
-    isEnabled: true,
-    senderName: '腾讯招聘团队',
-    description: '腾讯招聘邮件模板'
-  },
-  {
-    id: 2,
-    companyName: '阿里巴巴',
-    referralCode: 'ALI2024',
-    referralLink: 'https://alibaba.com/careers',
-    emailAccount: 'recruit@alibaba.com',
-    smtpServer: 'smtp.alibaba.com',
-    port: 587,
-    sslTls: false,
-    isEnabled: false,
-    senderName: '阿里巴巴人力资源',
-    description: '阿里巴巴内推招聘'
-  }
-];
+// API响应类型
+interface SendEmailListResponse {
+  data: SendEmail[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
 
 export function SendEmailManagement() {
-  const [data, setData] = useState<SendEmail[]>(mockData);
+  const { get, post, put, delete: del, loading } = useApi();
+  const { toast } = useToast();
+
+  const [data, setData] = useState<SendEmail[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<SendEmail | null>(null);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
   
   // 表单状态
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    companyName: string;
+    referralCode: string;
+    referralLink: string;
+    emailAccount: string;
+    password?: string; // 改为可选
+    smtpServer: string;
+    port: number;
+    sslTls: boolean;
+    senderName: string;
+    description: string;
+  }>({
     companyName: '',
     referralCode: '',
     referralLink: '',
@@ -75,16 +78,101 @@ export function SendEmailManagement() {
     description: ''
   });
 
-  // 筛选数据
-  const filteredData = data.filter(item =>
-    item.emailAccount.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // 加载数据
+  const loadData = async (page: number = 1, search?: string) => {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: '10',
+      });
+
+      if (search) {
+        params.append('search', search);
+      }
+
+      const response: ApiResponse<SendEmail[]> = await get(`/api/send-emails?${params}`);
+      
+      if (response.success && response.data) {
+        setData(response.data);
+        if (response.pagination) {
+          setCurrentPage(response.pagination.page);
+          setTotalPages(response.pagination.totalPages);
+          setTotal(response.pagination.total);
+        }
+      } else {
+        toast({
+          title: "加载失败",
+          description: response.error?.message || "获取发送邮箱列表失败",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Load data error:', error);
+      toast({
+        title: "加载失败",
+        description: "网络错误，请稍后重试",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // 初始加载
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // 搜索处理
+  const handleSearch = () => {
+    loadData(1, searchTerm);
+  };
+
+  // 搜索效果
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchTerm !== '') {
+        loadData(1, searchTerm);
+      } else {
+        loadData(1);
+      }
+    }, 500); // 防抖
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
 
   // 切换启用状态
-  const handleToggleEnabled = (id: number, checked: boolean) => {
-    setData(prev => prev.map(item =>
-      item.id === id ? { ...item, isEnabled: checked } : item
-    ));
+  const handleToggleEnabled = async (id: string, checked: boolean) => {
+    setLoadingAction(`toggle-${id}`);
+    try {
+      const response: ApiResponse<SendEmail> = await put(`/api/send-emails/${id}`, {
+        isEnabled: checked
+      });
+
+      if (response.success) {
+        // 更新本地状态
+        setData(prev => prev.map(item =>
+          item.id === id ? { ...item, isEnabled: checked } : item
+        ));
+        toast({
+          title: "更新成功",
+          description: `发送邮箱已${checked ? '启用' : '禁用'}`,
+        });
+      } else {
+        toast({
+          title: "更新失败",
+          description: response.error?.message || "状态更新失败",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Toggle enabled error:', error);
+      toast({
+        title: "更新失败",
+        description: "网络错误，请稍后重试",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingAction(null);
+    }
   };
 
   // 打开新增对话框
@@ -113,68 +201,118 @@ export function SendEmailManagement() {
       referralCode: item.referralCode,
       referralLink: item.referralLink,
       emailAccount: item.emailAccount,
-      password: '',
+      password: '', // 编辑时不显示密码
       smtpServer: item.smtpServer,
       port: item.port,
       sslTls: item.sslTls,
       senderName: item.senderName,
-      description: item.description
+      description: item.description || ''
     });
     setIsDialogOpen(true);
   };
 
   // 删除项目
-  const handleDelete = (id: number) => {
-    if (confirm('确定要删除这个发送邮箱吗？')) {
-      setData(prev => prev.filter(item => item.id !== id));
+  const handleDelete = async (id: string) => {
+    if (!confirm('确定要删除这个发送邮箱吗？')) {
+      return;
+    }
+
+    setLoadingAction(`delete-${id}`);
+    try {
+      const response: ApiResponse = await del(`/api/send-emails/${id}`);
+
+      if (response.success) {
+        // 重新加载数据
+        await loadData(currentPage, searchTerm);
+        toast({
+          title: "删除成功",
+          description: "发送邮箱已删除",
+        });
+      } else {
+        toast({
+          title: "删除失败",
+          description: response.error?.message || "删除失败",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast({
+        title: "删除失败",
+        description: "网络错误，请稍后重试",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingAction(null);
     }
   };
 
   // 保存表单
-  const handleSave = () => {
+  const handleSave = async () => {
+    // 基础验证
     if (!formData.companyName || !formData.referralCode || !formData.referralLink || 
         !formData.emailAccount || !formData.smtpServer || !formData.senderName) {
-      alert('请填写所有必填字段');
+      toast({
+        title: "验证失败",
+        description: "请填写所有必填字段",
+        variant: "destructive",
+      });
       return;
     }
 
-    if (editingItem) {
-      // 编辑模式
-      setData(prev => prev.map(item =>
-        item.id === editingItem.id
-          ? {
-              ...item,
-              companyName: formData.companyName,
-              referralCode: formData.referralCode,
-              referralLink: formData.referralLink,
-              emailAccount: formData.emailAccount,
-              smtpServer: formData.smtpServer,
-              port: formData.port,
-              sslTls: formData.sslTls,
-              senderName: formData.senderName,
-              description: formData.description
-            }
-          : item
-      ));
-    } else {
-      // 新增模式
-      const newItem: SendEmail = {
-        id: Math.max(...data.map(d => d.id), 0) + 1,
-        companyName: formData.companyName,
-        referralCode: formData.referralCode,
-        referralLink: formData.referralLink,
-        emailAccount: formData.emailAccount,
-        smtpServer: formData.smtpServer,
-        port: formData.port,
-        sslTls: formData.sslTls,
-        isEnabled: true,
-        senderName: formData.senderName,
-        description: formData.description
-      };
-      setData(prev => [...prev, newItem]);
+    // 新增时密码必填
+    if (!editingItem && !formData.password) {
+      toast({
+        title: "验证失败",
+        description: "密码不能为空",
+        variant: "destructive",
+      });
+      return;
     }
 
-    setIsDialogOpen(false);
+    try {
+      let response: ApiResponse<SendEmail>;
+
+      if (editingItem) {
+        // 编辑模式 - 只发送有值的密码字段
+        const updateData = { ...formData };
+        if (!updateData.password) {
+          delete updateData.password;
+        }
+        response = await put(`/api/send-emails/${editingItem.id}`, updateData);
+      } else {
+        // 新增模式
+        response = await post('/api/send-emails', formData);
+      }
+
+      if (response.success) {
+        setIsDialogOpen(false);
+        // 重新加载数据
+        await loadData(currentPage, searchTerm);
+        toast({
+          title: editingItem ? "更新成功" : "创建成功",
+          description: `发送邮箱已${editingItem ? '更新' : '创建'}`,
+        });
+      } else {
+        toast({
+          title: editingItem ? "更新失败" : "创建失败",
+          description: response.error?.message || "操作失败",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Save error:', error);
+      toast({
+        title: editingItem ? "更新失败" : "创建失败",
+        description: "网络错误，请稍后重试",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // 分页处理
+  const handlePageChange = (page: number) => {
+    loadData(page, searchTerm);
   };
 
   return (
@@ -183,8 +321,12 @@ export function SendEmailManagement() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">发送邮箱管理</h1>
         <div className="flex items-center gap-2">
-          <Button onClick={handleAdd}>
-            <Plus className="mr-2 h-4 w-4" />
+          <Button onClick={handleAdd} disabled={loading}>
+            {loading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="mr-2 h-4 w-4" />
+            )}
             新增发送邮箱
           </Button>
         </div>
@@ -199,8 +341,13 @@ export function SendEmailManagement() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-8"
+            disabled={loading}
+            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
           />
         </div>
+        <Button onClick={handleSearch} disabled={loading}>
+          搜索
+        </Button>
       </div>
 
       {/* 数据表格 */}
@@ -220,45 +367,101 @@ export function SendEmailManagement() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredData.map((item) => (
-              <TableRow key={item.id}>
-                <TableCell className="font-medium">{item.companyName}</TableCell>
-                <TableCell>{item.referralCode}</TableCell>
-                <TableCell className="max-w-xs truncate">
-                  <a href={item.referralLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                    {item.referralLink}
-                  </a>
-                </TableCell>
-                <TableCell>{item.emailAccount}</TableCell>
-                <TableCell>{item.smtpServer}</TableCell>
-                <TableCell>{item.port}</TableCell>
-                <TableCell>{item.sslTls ? '是' : '否'}</TableCell>
-                <TableCell>
-                  <Switch
-                    checked={item.isEnabled}
-                    onCheckedChange={(checked) => handleToggleEnabled(item.id, checked)}
-                  />
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleEdit(item)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleDelete(item.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+            {loading && data.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={9} className="h-32 text-center">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+                  <p className="text-muted-foreground">加载中...</p>
                 </TableCell>
               </TableRow>
-            ))}
+            ) : data.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={9} className="h-32 text-center">
+                  <p className="text-muted-foreground">暂无数据</p>
+                </TableCell>
+              </TableRow>
+            ) : (
+              data.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className="font-medium">{item.companyName}</TableCell>
+                  <TableCell>{item.referralCode}</TableCell>
+                  <TableCell className="max-w-xs truncate">
+                    <a href={item.referralLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                      {item.referralLink}
+                    </a>
+                  </TableCell>
+                  <TableCell>{item.emailAccount}</TableCell>
+                  <TableCell>{item.smtpServer}</TableCell>
+                  <TableCell>{item.port}</TableCell>
+                  <TableCell>{item.sslTls ? '是' : '否'}</TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={item.isEnabled}
+                      onCheckedChange={(checked) => handleToggleEnabled(item.id, checked)}
+                      disabled={loadingAction === `toggle-${item.id}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleEdit(item)}
+                        disabled={loadingAction !== null}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleDelete(item.id)}
+                        disabled={loadingAction === `delete-${item.id}` || loadingAction !== null}
+                      >
+                        {loadingAction === `delete-${item.id}` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </div>
 
-      {/* 显示筛选结果统计 */}
-      <div className="text-sm text-muted-foreground">
-        共 {filteredData.length} 条记录
-        {searchTerm && ` (从 ${data.length} 条记录中筛选)`}
+      {/* 分页和统计信息 */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          共 {total} 条记录
+          {searchTerm && ` (搜索结果)`}
+        </div>
+        
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1 || loading}
+            >
+              上一页
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              第 {currentPage} 页，共 {totalPages} 页
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages || loading}
+            >
+              下一页
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* 新增/编辑对话框 */}
@@ -305,12 +508,15 @@ export function SendEmailManagement() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">登录密码/授权码 *</label>
+              <label className="text-sm font-medium">
+                登录密码/授权码 {!editingItem && '*'}
+                {editingItem && <span className="text-xs text-muted-foreground">(留空则不修改)</span>}
+              </label>
               <Input
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                placeholder="请输入密码或授权码"
+                placeholder={editingItem ? "留空则不修改密码" : "请输入密码或授权码"}
               />
             </div>
             <div>
@@ -369,8 +575,15 @@ export function SendEmailManagement() {
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               取消
             </Button>
-            <Button onClick={handleSave}>
-              保存
+            <Button onClick={handleSave} disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  保存中...
+                </>
+              ) : (
+                '保存'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

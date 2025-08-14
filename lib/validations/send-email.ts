@@ -42,8 +42,8 @@ export const updateSendEmailSchema = createSendEmailSchema.omit({ password: true
 export const sendEmailQuerySchema = z.object({
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(100).default(10),
-  search: z.string().optional(),
-  companyName: z.string().optional(),
+  search: z.string().nullish(),
+  companyName: z.string().nullish(),
   isEnabled: z.coerce.boolean().optional()
 });
 

@@ -11,44 +11,9 @@ import {
   notFoundResponse
 } from '@/lib/utils/api-response';
 import { logger } from '@/lib/utils/logger';
-
-// 使用与父路由相同的模拟数据
-const MOCK_SEND_EMAILS = [
-  {
-    id: '1',
-    companyName: '腾讯科技',
-    referralCode: 'TX2024',
-    referralLink: 'https://tencent.com/jobs',
-    emailAccount: 'hr@tencent.com',
-    passwordEncrypted: 'encrypted_password_1',
-    smtpServer: 'smtp.tencent.com',
-    port: 465,
-    sslTls: true,
-    senderName: '腾讯招聘团队',
-    description: '腾讯招聘邮件模板',
-    isEnabled: true,
-    createdBy: '1',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '2',
-    companyName: '阿里巴巴',
-    referralCode: 'ALI2024',
-    referralLink: 'https://alibaba.com/careers',
-    emailAccount: 'recruit@alibaba.com',
-    passwordEncrypted: 'encrypted_password_2',
-    smtpServer: 'smtp.alibaba.com',
-    port: 587,
-    sslTls: false,
-    senderName: '阿里巴巴人力资源',
-    description: '阿里巴巴内推招聘',
-    isEnabled: false,
-    createdBy: '1',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
+import { getDatabase } from '@/lib/db';
+import { sendEmails } from '@/lib/db/schema';
+import { eq, and, isNull, not } from 'drizzle-orm';
 
 interface RouteContext {
   params: {
@@ -70,19 +35,42 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       return forbiddenResponse();
     }
 
+    const db = getDatabase();
     const { id } = params;
-    const sendEmail = MOCK_SEND_EMAILS.find(item => item.id === id);
+
+    const [sendEmail] = await db
+      .select({
+        id: sendEmails.id,
+        companyName: sendEmails.companyName,
+        referralCode: sendEmails.referralCode,
+        referralLink: sendEmails.referralLink,
+        emailAccount: sendEmails.emailAccount,
+        smtpServer: sendEmails.smtpServer,
+        port: sendEmails.port,
+        sslTls: sendEmails.sslTls,
+        senderName: sendEmails.senderName,
+        description: sendEmails.description,
+        isEnabled: sendEmails.isEnabled,
+        createdAt: sendEmails.createdAt,
+        updatedAt: sendEmails.updatedAt
+        // 注意：不返回 passwordEncrypted 字段
+      })
+      .from(sendEmails)
+      .where(
+        and(
+          eq(sendEmails.id, id),
+          isNull(sendEmails.deletedAt)
+        )
+      )
+      .limit(1);
 
     if (!sendEmail) {
       return notFoundResponse('发送邮箱');
     }
 
-    // 返回时移除密码字段
-    const { passwordEncrypted, ...safeData } = sendEmail;
-
     logger.debug('Send email fetched', { userId: user.userId, emailId: id });
 
-    return successResponse(safeData);
+    return successResponse(sendEmail);
 
   } catch (error) {
     logger.error('Get send email error', error);
@@ -104,6 +92,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
       return forbiddenResponse();
     }
 
+    const db = getDatabase();
     const { id } = params;
     const body = await request.json();
 
@@ -121,44 +110,79 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
     }
 
     const { password, ...updateData } = validation.data;
-    const sendEmailIndex = MOCK_SEND_EMAILS.findIndex(item => item.id === id);
 
-    if (sendEmailIndex === -1) {
+    // 检查记录是否存在
+    const [existingRecord] = await db
+      .select({ id: sendEmails.id })
+      .from(sendEmails)
+      .where(
+        and(
+          eq(sendEmails.id, id),
+          isNull(sendEmails.deletedAt)
+        )
+      )
+      .limit(1);
+
+    if (!existingRecord) {
       return notFoundResponse('发送邮箱');
     }
 
     // 如果更新邮箱地址，检查是否与其他记录冲突
     if (updateData.emailAccount) {
-      const existingEmail = MOCK_SEND_EMAILS.find(
-        item => item.emailAccount === updateData.emailAccount && item.id !== id
-      );
-      if (existingEmail) {
+      const [conflictingEmail] = await db
+        .select({ id: sendEmails.id })
+        .from(sendEmails)
+        .where(
+          and(
+            eq(sendEmails.emailAccount, updateData.emailAccount),
+            // 不是当前记录
+            not(eq(sendEmails.id, id)),
+            isNull(sendEmails.deletedAt)
+          )
+        )
+        .limit(1);
+
+      if (conflictingEmail) {
         return errorResponse('EMAIL_EXISTS', '该邮箱已存在', null, 409);
       }
     }
 
+    // 准备更新数据
+    const updateValues: any = {
+      ...updateData,
+      updatedAt: new Date()
+    };
+
     // 处理密码更新
-    let passwordEncrypted: string | undefined;
     if (password) {
       try {
-        passwordEncrypted = encrypt(password);
+        updateValues.passwordEncrypted = encrypt(password);
       } catch (error) {
         return errorResponse('ENCRYPTION_ERROR', '密码加密失败', error, 500);
       }
     }
 
     // 更新记录
-    const updatedSendEmail = {
-      ...MOCK_SEND_EMAILS[sendEmailIndex],
-      ...updateData,
-      ...(passwordEncrypted && { passwordEncrypted }),
-      updatedAt: new Date().toISOString()
-    };
-
-    MOCK_SEND_EMAILS[sendEmailIndex] = updatedSendEmail;
-
-    // 返回时移除密码字段
-    const { passwordEncrypted: _, ...safeData } = updatedSendEmail;
+    const [updatedSendEmail] = await db
+      .update(sendEmails)
+      .set(updateValues)
+      .where(eq(sendEmails.id, id))
+      .returning({
+        id: sendEmails.id,
+        companyName: sendEmails.companyName,
+        referralCode: sendEmails.referralCode,
+        referralLink: sendEmails.referralLink,
+        emailAccount: sendEmails.emailAccount,
+        smtpServer: sendEmails.smtpServer,
+        port: sendEmails.port,
+        sslTls: sendEmails.sslTls,
+        senderName: sendEmails.senderName,
+        description: sendEmails.description,
+        isEnabled: sendEmails.isEnabled,
+        createdAt: sendEmails.createdAt,
+        updatedAt: sendEmails.updatedAt
+        // 注意：不返回 passwordEncrypted 字段
+      });
 
     logger.info('Send email updated', { 
       userId: user.userId,
@@ -166,7 +190,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
       updatedFields: Object.keys(updateData)
     });
 
-    return successResponse(safeData);
+    return successResponse(updatedSendEmail);
 
   } catch (error) {
     logger.error('Update send email error', error);
@@ -174,7 +198,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
   }
 }
 
-// DELETE - 删除发送邮箱
+// DELETE - 删除发送邮箱 (软删除)
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
     // 认证检查
@@ -188,21 +212,41 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       return forbiddenResponse();
     }
 
+    const db = getDatabase();
     const { id } = params;
-    const sendEmailIndex = MOCK_SEND_EMAILS.findIndex(item => item.id === id);
 
-    if (sendEmailIndex === -1) {
+    // 检查记录是否存在
+    const [existingRecord] = await db
+      .select({
+        id: sendEmails.id,
+        emailAccount: sendEmails.emailAccount
+      })
+      .from(sendEmails)
+      .where(
+        and(
+          eq(sendEmails.id, id),
+          isNull(sendEmails.deletedAt)
+        )
+      )
+      .limit(1);
+
+    if (!existingRecord) {
       return notFoundResponse('发送邮箱');
     }
 
-    // 删除记录（在实际应用中可能是软删除）
-    const deletedSendEmail = MOCK_SEND_EMAILS[sendEmailIndex];
-    MOCK_SEND_EMAILS.splice(sendEmailIndex, 1);
+    // 软删除记录
+    await db
+      .update(sendEmails)
+      .set({
+        deletedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(sendEmails.id, id));
 
     logger.info('Send email deleted', { 
       userId: user.userId,
       emailId: id,
-      emailAccount: deletedSendEmail.emailAccount
+      emailAccount: existingRecord.emailAccount
     });
 
     return successResponse({ 

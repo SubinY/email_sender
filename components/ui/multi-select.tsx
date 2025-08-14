@@ -125,7 +125,12 @@ export function MultiSelect({
           </div>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0" align="start">
+      <PopoverContent 
+        className="w-full p-0 z-[99999]" 
+        align="start"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
         <Command onKeyDown={handleKeyDown}>
           <CommandInput placeholder="搜索选项..." />
           <CommandEmpty>没有找到选项。</CommandEmpty>
@@ -133,10 +138,18 @@ export function MultiSelect({
             {selectables.map((option) => (
               <CommandItem
                 key={option.value}
-                onSelect={() => {
+                onSelect={(e) => {
+                  e?.preventDefault?.();
+                  e?.stopPropagation?.();
                   onChange([...selected, option]);
                 }}
                 className="cursor-pointer"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onChange([...selected, option]);
+                }}
               >
                 <Checkbox
                   checked={selected.some((s) => s.value === option.value)}
