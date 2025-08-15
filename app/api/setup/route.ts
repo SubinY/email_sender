@@ -53,10 +53,24 @@ export async function POST(request: Request) {
 
   } catch (error) {
     console.error('数据库初始化错误:', error);
+    
+    // 更详细的错误信息
+    let errorDetails = '请检查数据库连接和环境变量配置';
+    if (error instanceof Error) {
+      if (error.message.includes('ECONNREFUSED')) {
+        errorDetails = '数据库连接被拒绝，请检查 DATABASE_URL 环境变量是否正确设置';
+      } else if (error.message.includes('fetch failed')) {
+        errorDetails = '网络连接失败，请检查数据库服务是否可用';
+      }
+    }
+    
     return NextResponse.json(
       { 
         error: error instanceof Error ? error.message : '初始化失败',
-        details: '请检查数据库连接和环境变量配置'
+        details: errorDetails,
+        environment: process.env.NODE_ENV,
+        hasDatabase: !!process.env.DATABASE_URL,
+        databaseHint: process.env.DATABASE_URL ? 'DATABASE_URL 已设置' : 'DATABASE_URL 未设置'
       },
       { status: 500 }
     );
