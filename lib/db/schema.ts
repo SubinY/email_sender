@@ -77,7 +77,7 @@ export const sendTasks = pgTable('send_tasks', {
   durationDays: integer('duration_days'),
   emailsPerHour: integer('emails_per_hour').notNull(),
   emailsPerTeacherPerDay: integer('emails_per_teacher_per_day').notNull(),
-  maxEmailsPerDay: integer('max_emails_per_day').default(500).notNull(),
+  // maxEmailsPerDay: integer('max_emails_per_day').default(500).notNull(),
   maxBatchSize: integer('max_batch_size').default(20).notNull(),
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
