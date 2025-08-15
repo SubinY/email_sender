@@ -71,6 +71,13 @@ interface TaskCalculationResult {
   effectiveDailyRate: number;
   sendingSchedule: any[];
   statusMatrix: { [receiveId: string]: { [sendId: string]: string } };
+  groupInfo: {
+    totalGroups: number;
+    daysPerGroup: number;
+    companiesPerGroup: number;
+    companyDailyCapacity: number;
+    currentGroupDailyCapacity: number;
+  };
 }
 
 // 任务状态数据

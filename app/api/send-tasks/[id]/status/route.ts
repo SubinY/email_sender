@@ -14,9 +14,9 @@ import { eq } from 'drizzle-orm';
 
 // 路由参数类型
 interface RouteContext {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 /**
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         createdAt: task.createdAt,
         updatedAt: task.updatedAt
       },
-      sendEmails: taskSendEmailsResult.map(item => ({
+      sendEmails: taskSendEmailsResult.map((item: any) => ({
         id: item.sendEmail.id,
         companyName: item.sendEmail.companyName,
         emailAccount: item.sendEmail.emailAccount,
@@ -108,6 +108,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     });
 
   } catch (error) {
+    const { id } = await params;
     logger.error(`Task status failed for ${id}`, error);
     return errorResponse(
       'STATUS_ERROR', 

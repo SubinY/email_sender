@@ -15,9 +15,9 @@ import { receiveEmails } from '@/lib/db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 
 interface RouteContext {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 // GET - 获取单个接收邮箱
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       return forbiddenResponse();
     }
 
-    const { id } = params;
+    const { id } = await params;
     
     // 从数据库查询
     const receiveEmail = await db
@@ -71,7 +71,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
       return forbiddenResponse();
     }
 
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
 
     // 验证请求数据
@@ -151,7 +151,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       return forbiddenResponse();
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     // 检查记录是否存在
     const existingRecord = await db

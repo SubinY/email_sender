@@ -82,8 +82,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 获取表头行和数据行
-    const headers = jsonData[0] as any[];
-    const dataRows = jsonData.slice(1) as any[][];
+    const headers = (jsonData[0] as unknown) as any[];
+    const dataRows = (jsonData.slice(1) as unknown) as any[][];
 
     // 验证表头格式
     const expectedHeaders = ['学校', '学院', '联系人', '邮箱', '电话', '备注'];
@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
       .from(receiveEmails)
       .where(inArray(receiveEmails.email, emailsToCheck));
 
-    const duplicateEmails = existingEmails.map(item => item.email);
+    const duplicateEmails = existingEmails.map((item: { email: string }) => item.email);
 
     if (duplicateEmails.length > 0) {
       return errorResponse('DUPLICATE_EMAILS', '存在重复的邮箱地址', {

@@ -16,9 +16,9 @@ import { sendEmails } from '@/lib/db/schema';
 import { eq, and, isNull, not } from 'drizzle-orm';
 
 interface RouteContext {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 // GET - 获取单个发送邮箱
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     }
 
     const db = getDatabase();
-    const { id } = params;
+    const { id } = await params;
 
     const [sendEmail] = await db
       .select({
@@ -93,7 +93,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
     }
 
     const db = getDatabase();
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
 
     // 验证请求数据
@@ -208,12 +208,12 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     }
 
     // 权限检查
-    if (!checkPermission(user.role, 'send-emails:write')) {
+    if (!checkPermission(user.role, 'send-emails:delete')) {
       return forbiddenResponse();
     }
 
     const db = getDatabase();
-    const { id } = params;
+    const { id } = await params;
 
     // 检查记录是否存在
     const [existingRecord] = await db

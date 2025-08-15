@@ -16,9 +16,9 @@ import { z } from 'zod';
 
 // 路由参数类型
 interface RouteContext {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 // 请求数据验证schema
@@ -33,7 +33,14 @@ const controlTaskSchema = z.object({
     dailyReceiveLimit: z.number(),
     effectiveDailyRate: z.number(),
     sendingSchedule: z.array(z.any()),
-    statusMatrix: z.any()
+    statusMatrix: z.any(),
+    groupInfo: z.object({
+      totalGroups: z.number(),
+      daysPerGroup: z.number(),
+      companiesPerGroup: z.number(),
+      companyDailyCapacity: z.number(),
+      currentGroupDailyCapacity: z.number()
+    })
   }).optional()
 });
 
@@ -111,7 +118,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             .where(eq(sendTasks.id, id));
 
           // 启动邮件调度器
-          await emailScheduler.startTask(id, calculationResult);
+          await emailScheduler.startTask(id, calculationResult as any);
           
           logger.info(`Task started successfully: ${id}`);
         } catch (schedulerError) {
@@ -222,7 +229,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     });
 
   } catch (error) {
-    logger.error(`Task control failed for ${params.id}`, error);
+    const { id } = await params;
+    logger.error(`Task control failed for ${id}`, error);
     return errorResponse(
       'CONTROL_ERROR', 
       '任务控制失败',

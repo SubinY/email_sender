@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
           ilike(sendEmails.emailAccount, `%${search}%`),
           ilike(sendEmails.companyName, `%${search}%`),
           ilike(sendEmails.senderName, `%${search}%`)
-        )
+        )!
       );
     }
 
