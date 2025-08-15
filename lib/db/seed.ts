@@ -1,11 +1,165 @@
-import db from './index';
+import { getDatabase } from './index';
 import { users, receiveEmails, sendEmails } from './schema';
 import { hashPassword } from '../auth/password';
+import { sql } from 'drizzle-orm';
+
+async function createTablesIfNotExists() {
+  const db = getDatabase();
+  
+  console.log('🔨 检查并创建数据库表结构...');
+  
+  try {
+    // 创建枚举类型（如果不存在）
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE user_role AS ENUM ('admin', 'manager', 'operator');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE task_status AS ENUM ('initialized', 'running', 'paused', 'completed', 'failed');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE email_log_status AS ENUM ('pending', 'sent', 'failed', 'bounced');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // 创建用户表
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        username varchar(50) NOT NULL UNIQUE,
+        email varchar(100) NOT NULL UNIQUE,
+        password_hash varchar(255) NOT NULL,
+        role user_role DEFAULT 'operator' NOT NULL,
+        is_active boolean DEFAULT true NOT NULL,
+        last_login_at timestamp,
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL,
+        deleted_at timestamp
+      );
+    `);
+
+    // 创建接收邮箱表
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS receive_emails (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        university_name varchar(200) NOT NULL,
+        college_name varchar(200),
+        contact_person varchar(100),
+        province varchar(50),
+        email varchar(100) NOT NULL,
+        phone varchar(20),
+        responsibility text,
+        is_blacklisted boolean DEFAULT false NOT NULL,
+        created_by uuid REFERENCES users(id),
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL,
+        deleted_at timestamp
+      );
+    `);
+
+    // 创建发送邮箱表
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS send_emails (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_name varchar(200) NOT NULL,
+        referral_code varchar(100),
+        referral_link text,
+        email_account varchar(100) NOT NULL UNIQUE,
+        password_encrypted text NOT NULL,
+        smtp_server varchar(200) NOT NULL,
+        port integer DEFAULT 587 NOT NULL,
+        ssl_tls boolean DEFAULT true NOT NULL,
+        sender_name varchar(100),
+        description text,
+        is_enabled boolean DEFAULT true NOT NULL,
+        created_by uuid REFERENCES users(id),
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL,
+        deleted_at timestamp
+      );
+    `);
+
+    // 创建发送任务表
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS send_tasks (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_name varchar(200) NOT NULL,
+        status task_status DEFAULT 'initialized' NOT NULL,
+        start_time timestamp,
+        end_time timestamp,
+        duration_days integer,
+        emails_per_hour integer DEFAULT 50 NOT NULL,
+        emails_per_teacher_per_day integer DEFAULT 2 NOT NULL,
+        created_by uuid REFERENCES users(id),
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL,
+        deleted_at timestamp
+      );
+    `);
+
+    // 创建任务发送邮箱关联表
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS task_send_emails (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_id uuid NOT NULL REFERENCES send_tasks(id) ON DELETE CASCADE,
+        send_email_id uuid NOT NULL REFERENCES send_emails(id) ON DELETE CASCADE,
+        created_at timestamp DEFAULT now() NOT NULL,
+        UNIQUE(task_id, send_email_id)
+      );
+    `);
+
+    // 创建邮件发送日志表
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS email_logs (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_id uuid NOT NULL REFERENCES send_tasks(id),
+        send_email_id uuid NOT NULL REFERENCES send_emails(id),
+        receive_email_id uuid NOT NULL REFERENCES receive_emails(id),
+        status email_log_status DEFAULT 'pending' NOT NULL,
+        sent_at timestamp,
+        error_message text,
+        retry_count integer DEFAULT 0 NOT NULL,
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
+    console.log('✅ 数据库表结构创建完成');
+    
+  } catch (error) {
+    console.error('❌ 创建表结构失败:', error);
+    throw error;
+  }
+}
 
 async function seed() {
   console.log('🌱 开始数据库种子数据初始化...');
 
   try {
+    // 首先创建表结构
+    await createTablesIfNotExists();
+
+    const db = getDatabase();
+
+    // 检查是否已经有用户数据
+    const existingUsers = await db.select().from(users).limit(1);
+    if (existingUsers.length > 0) {
+      console.log('✅ 数据库已经有数据，跳过种子数据初始化');
+      return;
+    }
+
     // 创建管理员用户
     console.log('👤 创建管理员用户...');
     const adminPasswordHash = await hashPassword('Admin123!');
