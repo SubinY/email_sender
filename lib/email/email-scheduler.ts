@@ -73,6 +73,25 @@ export class EmailScheduler {
       throw new Error(`Invalid calculation result: empty sending schedule for task ${taskId}`);
     }
     
+    // 验证新的分组信息
+    if (calculation.groupInfo) {
+      const { totalGroups, daysPerGroup, companiesPerGroup } = calculation.groupInfo;
+      
+      logger.info(`Task ${taskId} group info:`, {
+        totalGroups,
+        daysPerGroup, 
+        companiesPerGroup,
+        expectedDays: totalGroups * daysPerGroup,
+        actualScheduleDays: calculation.sendingSchedule.length
+      });
+      
+      // 验证分组信息与调度计划的一致性
+      const expectedDays = totalGroups * daysPerGroup;
+      if (expectedDays !== calculation.sendingSchedule.length) {
+        logger.warn(`Group info mismatch: expected ${expectedDays} days, got ${calculation.sendingSchedule.length} days`);
+      }
+    }
+    
     // 验证发送计划的数据完整性
     for (let dayIndex = 0; dayIndex < calculation.sendingSchedule.length; dayIndex++) {
       const daySchedule = calculation.sendingSchedule[dayIndex];
@@ -114,7 +133,10 @@ export class EmailScheduler {
     // 生成所有邮件作业
     try {
       this.generateEmailJobs(task);
-      logger.info(`Successfully generated ${this.emailJobs.size} email jobs for task ${taskId}`);
+      logger.info(`Successfully generated email jobs for task ${taskId}`, {
+        totalJobs: this.emailJobs.size,
+        groupInfo: calculation.groupInfo
+      });
     } catch (error) {
       logger.error(`Failed to generate email jobs for task ${taskId}`, error);
       this.cleanupTask(taskId);

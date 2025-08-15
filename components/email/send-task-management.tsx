@@ -574,6 +574,8 @@ export function SendTaskManagement() {
             <TableRow>
               <TableHead>任务名称</TableHead>
               <TableHead>发送邮箱</TableHead>
+              <TableHead>每小时发送量</TableHead>
+              <TableHead>每日收到量</TableHead>
               <TableHead>开始时间</TableHead>
               <TableHead>预计天数</TableHead>
               <TableHead>状态</TableHead>
@@ -596,6 +598,22 @@ export function SendTaskManagement() {
                           {email.companyName}
                         </Badge>
                       ))}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-center">
+                      <div className="font-medium text-blue-600">
+                        {item.emailsPerHour}
+                      </div>
+                      {/* <div className="text-xs text-gray-500">封/小时</div> */}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-center">
+                      <div className="font-medium text-green-600">
+                        {item.emailsPerTeacherPerDay}
+                      </div>
+                      {/* <div className="text-xs text-gray-500">封/天</div> */}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -670,7 +688,7 @@ export function SendTaskManagement() {
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={8}
                   className="text-center py-8 text-gray-500"
                 >
                   <div>

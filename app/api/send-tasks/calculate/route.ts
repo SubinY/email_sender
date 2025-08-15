@@ -29,6 +29,9 @@ export async function POST(request: NextRequest) {
   try {
     logger.info('Task calculation request started');
     
+    // 🧪 临时添加算法验证（开发阶段）
+    // TaskCalculator.verifyAlgorithm();
+    
     // 认证检查
     const user = await authenticateUser(request);
     if (!user) {
