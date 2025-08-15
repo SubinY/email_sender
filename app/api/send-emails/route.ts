@@ -139,10 +139,10 @@ export async function POST(request: NextRequest) {
       return unauthorizedResponse();
     }
 
-    // 权限检查
-    if (!checkPermission(user.role, 'send-emails:write')) {
-      return forbiddenResponse();
-    }
+    // // 权限检查
+    // if (!checkPermission(user.role, 'send-emails:write')) {
+    //   return forbiddenResponse();
+    // }
 
     const db = getDatabase();
     const body = await request.json();
