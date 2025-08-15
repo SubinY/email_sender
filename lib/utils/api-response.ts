@@ -25,6 +25,7 @@ export interface PaginationInfo {
   limit: number;
   total: number;
   totalPages: number;
+  offset: number;
 }
 
 /**
@@ -154,11 +155,13 @@ export function calculatePagination(
   total: number
 ): PaginationInfo {
   const totalPages = Math.ceil(total / limit);
+  const validPage = Math.max(1, Math.min(page, totalPages || 1));
   
   return {
-    page: Math.max(1, Math.min(page, totalPages || 1)),
+    page: validPage,
     limit,
     total,
-    totalPages
+    totalPages,
+    offset: (validPage - 1) * limit
   };
 } 

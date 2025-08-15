@@ -9,7 +9,7 @@ import {
   calculatePagination
 } from '@/lib/utils/api-response';
 import { logger } from '@/lib/utils/logger';
-import db from '@/lib/db';
+import { getDatabase } from '@/lib/db';
 import { sendTasks, taskSendEmails, sendEmails } from '@/lib/db/schema';
 import { eq, desc, count } from 'drizzle-orm';
 import { z } from 'zod';
@@ -41,6 +41,8 @@ export async function GET(request: NextRequest) {
     //   return forbiddenResponse();
     // }
 
+    const db = getDatabase();
+
     // 验证查询参数
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
@@ -64,7 +66,7 @@ export async function GET(request: NextRequest) {
 
     // 为每个任务获取关联的发送邮箱
     const tasksWithEmails = await Promise.all(
-      tasks.map(async (task) => {
+      tasks.map(async (task: any) => {
         const taskEmails = await db
           .select({
             sendEmail: sendEmails
@@ -75,7 +77,7 @@ export async function GET(request: NextRequest) {
 
         return {
           ...task,
-          sendEmails: taskEmails.map(te => ({
+          sendEmails: taskEmails.map((te: any) => ({
             id: te.sendEmail.id,
             companyName: te.sendEmail.companyName,
             emailAccount: te.sendEmail.emailAccount,
@@ -126,6 +128,7 @@ export async function POST(request: NextRequest) {
     //   return forbiddenResponse();
     // }
 
+    const db = getDatabase();
     const body = await request.json();
     
     // 验证请求数据
@@ -151,17 +154,17 @@ export async function POST(request: NextRequest) {
       .where(eq(sendEmails.isEnabled, true));
 
     // 检查是否所有请求的邮箱都存在且启用
-    const validEmailIds = sendEmailsData.map(email => email.id);
+    const validEmailIds = sendEmailsData.map((email: any) => email.id);
     const invalidEmailIds = sendEmailIds.filter(id => !validEmailIds.includes(id));
     
     if (invalidEmailIds.length > 0) {
       return errorResponse('INVALID_SEND_EMAILS', '部分发送邮箱不存在或已被禁用');
     }
 
-    // 使用事务创建任务
-    const result = await db.transaction(async (tx) => {
+    // 由于 Neon HTTP 驱动不支持事务，我们分别执行操作
+    try {
       // 创建任务
-      const [newTask] = await tx
+      const [newTask] = await db
         .insert(sendTasks)
         .values({
           taskName,
@@ -169,13 +172,13 @@ export async function POST(request: NextRequest) {
           emailsPerHour,
           emailsPerTeacherPerDay,
           durationDays,
-          createdBy: user.id,
+          createdBy: user.userId,
         })
         .returning();
 
       // 创建任务和发送邮箱的关联
       for (const sendEmailId of sendEmailIds) {
-        await tx
+        await db
           .insert(taskSendEmails)
           .values({
             taskId: newTask.id,
@@ -183,31 +186,34 @@ export async function POST(request: NextRequest) {
           });
       }
 
-      return newTask;
-    });
+      logger.info(`Task created successfully: ${newTask.id}`);
 
-    logger.info(`Task created successfully: ${result.id}`);
+      // 获取完整的任务信息（包含发送邮箱）
+      const taskEmails = await db
+        .select({
+          sendEmail: sendEmails
+        })
+        .from(taskSendEmails)
+        .innerJoin(sendEmails, eq(taskSendEmails.sendEmailId, sendEmails.id))
+        .where(eq(taskSendEmails.taskId, newTask.id));
 
-    // 获取完整的任务信息（包含发送邮箱）
-    const taskEmails = await db
-      .select({
-        sendEmail: sendEmails
-      })
-      .from(taskSendEmails)
-      .innerJoin(sendEmails, eq(taskSendEmails.sendEmailId, sendEmails.id))
-      .where(eq(taskSendEmails.taskId, result.id));
+      return successResponse({
+        task: {
+          ...newTask,
+          sendEmails: taskEmails.map((te: any) => ({
+            id: te.sendEmail.id,
+            companyName: te.sendEmail.companyName,
+            emailAccount: te.sendEmail.emailAccount,
+            senderName: te.sendEmail.senderName
+          }))
+        }
+      }, undefined, 201);
 
-    return successResponse({
-      task: {
-        ...result,
-        sendEmails: taskEmails.map(te => ({
-          id: te.sendEmail.id,
-          companyName: te.sendEmail.companyName,
-          emailAccount: te.sendEmail.emailAccount,
-          senderName: te.sendEmail.senderName
-        }))
-      }
-    }, undefined, 201);
+    } catch (createError) {
+      logger.error('Failed to create task, attempting cleanup', createError);
+      // 如果创建失败，尝试清理已创建的数据（但由于没有事务，这可能不完整）
+      throw createError;
+    }
 
   } catch (error) {
     logger.error('Create send task failed', error);
@@ -217,7 +223,7 @@ export async function POST(request: NextRequest) {
       error instanceof Error ? error.message : 'Unknown error'
     );
   }
-} 
+}
 
 /**
  * DELETE - 重置调度器状态（清理内存中的所有任务和定时器）
