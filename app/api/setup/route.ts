@@ -6,7 +6,33 @@ import seed from '@/lib/db/seed';
 
 export async function POST(request: Request) {
   try {
-    const { authorization } = await request.json();
+    // 先检查请求体是否存在
+    const contentType = request.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return NextResponse.json(
+        { 
+          error: 'Content-Type 必须是 application/json',
+          received: contentType || 'none'
+        },
+        { status: 400 }
+      );
+    }
+
+    let body;
+    try {
+      body = await request.json();
+    } catch (jsonError) {
+      return NextResponse.json(
+        { 
+          error: 'JSON 解析失败',
+          details: jsonError instanceof Error ? jsonError.message : 'Invalid JSON format',
+          hint: '请确保请求体是有效的 JSON 格式，例如: {"authorization": "your-secret"}'
+        },
+        { status: 400 }
+      );
+    }
+
+    const { authorization } = body;
     
     // 简单的授权检查 - 生产环境应该使用更强的验证
     if (authorization !== process.env.SETUP_SECRET) {
