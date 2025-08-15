@@ -179,19 +179,19 @@ export async function POST(request: NextRequest) {
     }
 
     // 加密密码
-    let passwordEncrypted: string;
-    try {
-      passwordEncrypted = encrypt(password);
-    } catch (error) {
-      return errorResponse('ENCRYPTION_ERROR', '密码加密失败', error, 500);
-    }
+    // let passwordEncrypted: string;
+    // try {
+    //   passwordEncrypted = encrypt(password);
+    // } catch (error) {
+    //   return errorResponse('ENCRYPTION_ERROR', '密码加密失败', error, 500);
+    // }
 
     // 创建新记录
     const [newSendEmail] = await db
       .insert(sendEmails)
       .values({
         ...data,
-        passwordEncrypted,
+        passwordEncrypted: password,
         isEnabled: true,
         createdBy: user.userId
       })

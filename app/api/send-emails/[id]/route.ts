@@ -156,7 +156,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
     // 处理密码更新
     if (password) {
       try {
-        updateValues.passwordEncrypted = encrypt(password);
+        updateValues.passwordEncrypted = password; // encrypt(password);
       } catch (error) {
         return errorResponse('ENCRYPTION_ERROR', '密码加密失败', error, 500);
       }
